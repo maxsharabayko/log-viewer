@@ -37,14 +37,12 @@ app.innerHTML = `
       <div>
         <p class="eyebrow">Offline Static Viewer</p>
         <h1>ngx log viewer</h1>
-        <p class="hero-copy">
-          Upload a local log file, parse your current application format, and keep foreign runtime lines visible instead of dropping them.
-        </p>
+        <p class="hero-copy">Compact log inspection for dense, editor-like browsing.</p>
       </div>
       <div class="format-card">
         <p class="format-label">Target format</p>
         <code>YYYY-MM-DD HH:MM:SS.ffffff Level : [AREA] (component) message</code>
-        <p class="format-note">Current logs still work; the parser falls back for GLib and GStreamer output.</p>
+        <p class="format-note">Current logs still work; fallback rows preserve GLib and GStreamer output.</p>
       </div>
     </header>
 
@@ -91,7 +89,7 @@ app.innerHTML = `
       <div class="table-panel">
         <div class="panel-header">
           <div>
-            <h2>Parsed events</h2>
+            <h2>Events</h2>
             <p id="results-meta">Load a file to inspect entries.</p>
           </div>
           <label class="field inline-field">
