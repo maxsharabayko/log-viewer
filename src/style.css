@@ -70,7 +70,7 @@ dd {
 }
 
 .hero-panel,
-.toolbar,
+.upload-panel,
 .summary-card,
 .table-panel,
 .details-panel {
@@ -151,9 +151,17 @@ tbody,
   font-size: 0.78rem;
 }
 
-.toolbar {
+.upload-panel {
   padding: 12px 14px;
   margin-bottom: 10px;
+}
+
+.table-filters {
+  margin-bottom: 10px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.02);
 }
 
 .dropzone {
@@ -199,7 +207,7 @@ tbody,
 
 .toolbar-grid {
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  margin-top: 10px;
+  margin-top: 0;
 }
 
 .field {
@@ -265,7 +273,7 @@ tbody,
 }
 
 .content-grid {
-  grid-template-columns: minmax(0, 2.3fr) minmax(260px, 0.7fr);
+  grid-template-columns: minmax(0, 1fr);
   align-items: start;
 }
 
@@ -277,13 +285,6 @@ tbody,
 
 .table-panel {
   min-height: calc(100vh - 196px);
-}
-
-.details-panel {
-  position: sticky;
-  top: 8px;
-  max-height: calc(100vh - 20px);
-  overflow: auto;
 }
 
 .panel-header {
@@ -337,7 +338,7 @@ td {
   line-height: 1.2;
 }
 
-td:nth-child(1) { width: 58px; }
+td:nth-child(1) { width: 42px; }
 td:nth-child(3) { width: 76px; }
 td:nth-child(4) { width: 120px; }
 td:nth-child(5) { width: 150px; }
@@ -348,7 +349,7 @@ tbody tr {
 }
 
 tbody tr:hover,
-tbody tr.selected {
+tbody tr.expanded {
   background: rgba(231, 111, 81, 0.12);
 }
 
@@ -356,6 +357,31 @@ tbody tr.selected {
   min-width: 240px;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.message-expanded {
+  white-space: normal;
+  word-break: break-word;
+}
+
+.expand-row td {
+  padding: 7px 9px;
+  background: rgba(11, 17, 25, 0.55);
+}
+
+.expand-grid {
+  display: grid;
+  gap: 4px;
+  font-size: 0.8rem;
+  color: var(--text-soft);
+}
+
+.expand-grid p {
+  margin: 0;
+}
+
+.expand-grid strong {
+  color: var(--text);
 }
 
 .severity,
@@ -430,11 +456,6 @@ tbody tr.selected {
     min-height: auto;
   }
 
-  .details-panel {
-    position: static;
-    max-height: none;
-  }
-
   .table-wrap {
     max-height: none;
   }
@@ -456,17 +477,15 @@ tbody tr.selected {
   }
 
   .hero-panel,
-  .toolbar,
+  .upload-panel,
   .table-panel,
-  .details-panel,
   .summary-card {
     border-radius: 12px;
   }
 
   .hero-panel,
-  .toolbar,
-  .table-panel,
-  .details-panel {
+  .upload-panel,
+  .table-panel {
     padding: 10px;
   }
 

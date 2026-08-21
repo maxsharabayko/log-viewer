@@ -7,7 +7,7 @@ type AppState = {
   entries: LogEntry[]
   filteredEntries: LogEntry[]
   filters: LogFiltersState
-  selectedId: number | null
+  expandedIds: Set<number>
   selectedName: string
   sortKey: SortKey
   sortDirection: SortDirection
@@ -25,7 +25,7 @@ const state: AppState = {
   entries: [],
   filteredEntries: [],
   filters: initialFilters,
-  selectedId: null,
+  expandedIds: new Set<number>(),
   selectedName: 'No file loaded',
   sortKey: 'timestamp',
   sortDirection: 'asc',
@@ -46,47 +46,49 @@ app.innerHTML = `
       </div>
     </header>
 
-    <section class="toolbar">
+    <section class="upload-panel">
       <label class="dropzone" for="log-file">
         <input id="log-file" type="file" accept=".log,.txt,text/plain" />
         <span class="dropzone-title">Upload log file</span>
         <span class="dropzone-subtitle">Drag and drop a local log or browse from disk.</span>
       </label>
-
-      <div class="toolbar-grid">
-        <label class="field">
-          <span>Search</span>
-          <input id="search-text" type="search" placeholder="Search message, area, component, raw line" />
-        </label>
-
-        <label class="field">
-          <span>Area</span>
-          <select id="area-filter">
-            <option value="all">All areas</option>
-          </select>
-        </label>
-
-        <label class="field">
-          <span>Component</span>
-          <select id="component-filter">
-            <option value="all">All components</option>
-          </select>
-        </label>
-      </div>
-
-      <div class="level-row" id="level-row"></div>
-
-      <div class="kind-row">
-        <label><input id="structured-toggle" type="checkbox" checked /> Structured</label>
-        <label><input id="external-toggle" type="checkbox" checked /> External</label>
-        <label><input id="unstructured-toggle" type="checkbox" checked /> Unstructured</label>
-      </div>
     </section>
 
     <section class="summary-grid" id="summary-grid"></section>
 
     <section class="content-grid">
       <div class="table-panel">
+        <div class="table-filters">
+          <div class="toolbar-grid">
+            <label class="field">
+              <span>Search</span>
+              <input id="search-text" type="search" placeholder="Search message, area, component, raw line" />
+            </label>
+
+            <label class="field">
+              <span>Area</span>
+              <select id="area-filter">
+                <option value="all">All areas</option>
+              </select>
+            </label>
+
+            <label class="field">
+              <span>Component</span>
+              <select id="component-filter">
+                <option value="all">All components</option>
+              </select>
+            </label>
+          </div>
+
+          <div class="level-row" id="level-row"></div>
+
+          <div class="kind-row">
+            <label><input id="structured-toggle" type="checkbox" checked /> Structured</label>
+            <label><input id="external-toggle" type="checkbox" checked /> External</label>
+            <label><input id="unstructured-toggle" type="checkbox" checked /> Unstructured</label>
+          </div>
+        </div>
+
         <div class="panel-header">
           <div>
             <h2>Events</h2>
@@ -123,17 +125,6 @@ app.innerHTML = `
           </table>
         </div>
       </div>
-
-      <aside class="details-panel">
-        <div class="panel-header">
-          <div>
-            <h2>Entry details</h2>
-            <p id="details-meta">Select a row to inspect the parsed fields and raw line.</p>
-          </div>
-        </div>
-        <dl id="details-grid" class="details-grid"></dl>
-        <pre id="raw-line" class="raw-line">No entry selected.</pre>
-      </aside>
     </section>
   </div>
 `
@@ -150,9 +141,6 @@ const levelRow = document.querySelector<HTMLDivElement>('#level-row')
 const summaryGrid = document.querySelector<HTMLDivElement>('#summary-grid')
 const resultsBody = document.querySelector<HTMLTableSectionElement>('#results-body')
 const resultsMeta = document.querySelector<HTMLParagraphElement>('#results-meta')
-const detailsMeta = document.querySelector<HTMLParagraphElement>('#details-meta')
-const detailsGrid = document.querySelector<HTMLDListElement>('#details-grid')
-const rawLine = document.querySelector<HTMLPreElement>('#raw-line')
 const dropzone = document.querySelector<HTMLLabelElement>('.dropzone')
 
 if (
@@ -168,9 +156,6 @@ if (
   !summaryGrid ||
   !resultsBody ||
   !resultsMeta ||
-  !detailsMeta ||
-  !detailsGrid ||
-  !rawLine ||
   !dropzone
 ) {
   throw new Error('Application UI failed to initialize.')
@@ -189,9 +174,6 @@ const ui = {
   summaryGrid,
   resultsBody,
   resultsMeta,
-  detailsMeta,
-  detailsGrid,
-  rawLine,
   dropzone,
 }
 
@@ -288,32 +270,6 @@ function renderSummary(): void {
   `
 }
 
-function renderDetails(entry: LogEntry | undefined): void {
-  if (!entry) {
-    ui.detailsMeta.textContent = 'Select a row to inspect the parsed fields and raw line.'
-    ui.detailsGrid.innerHTML = ''
-    ui.rawLine.textContent = 'No entry selected.'
-    return
-  }
-
-  ui.detailsMeta.textContent = `Line ${entry.lineNumber} • ${entry.kind}`
-  ui.detailsGrid.innerHTML = [
-    ['Timestamp', entry.timestampText ?? 'n/a'],
-    ['Level', entry.level],
-    ['Area', entry.area],
-    ['Component', entry.component],
-    ['Kind', entry.kind],
-    ['Context', entry.context || 'n/a'],
-    ['Message', entry.message],
-  ].map(([term, description]) => `
-      <div>
-        <dt>${escapeHtml(term)}</dt>
-        <dd>${escapeHtml(description)}</dd>
-      </div>
-    `).join('')
-  ui.rawLine.textContent = entry.raw
-}
-
 function renderTable(): void {
   if (state.filteredEntries.length === 0) {
     ui.resultsBody.innerHTML = `
@@ -325,26 +281,43 @@ function renderTable(): void {
   }
 
   ui.resultsBody.innerHTML = state.filteredEntries.map((entry) => {
+    const isExpanded = state.expandedIds.has(entry.id)
     const messagePreview = entry.message.length > 120 ? `${entry.message.slice(0, 117)}...` : entry.message
-    const selectedClass = entry.id === state.selectedId ? 'selected' : ''
+    const displayedMessage = isExpanded ? entry.message : messagePreview
+    const expandedClass = isExpanded ? 'expanded' : ''
+
     return `
-      <tr data-entry-id="${entry.id}" class="${selectedClass}">
+      <tr data-entry-id="${entry.id}" class="${expandedClass}">
         <td>${entry.lineNumber}</td>
         <td>${escapeHtml(entry.timestampText ?? 'n/a')}</td>
         <td><span class="severity severity-${entry.level.toLowerCase()}">${entry.level}</span></td>
         <td>${escapeHtml(entry.area)}</td>
         <td>${escapeHtml(entry.component)}</td>
-        <td class="message-cell">${escapeHtml(messagePreview)}</td>
+        <td class="message-cell ${isExpanded ? 'message-expanded' : ''}">${escapeHtml(displayedMessage)}</td>
         <td><span class="kind-badge ${badgeClass(entry.kind)}">${entry.kind}</span></td>
       </tr>
+      ${isExpanded ? `
+      <tr class="expand-row" data-parent-entry-id="${entry.id}">
+        <td colspan="7">
+          <div class="expand-grid">
+            <p><strong>Context:</strong> ${escapeHtml(entry.context || 'n/a')}</p>
+            <p><strong>Raw:</strong> ${escapeHtml(entry.raw)}</p>
+          </div>
+        </td>
+      </tr>
+      ` : ''}
     `
   }).join('')
 
   for (const row of ui.resultsBody.querySelectorAll<HTMLTableRowElement>('tr[data-entry-id]')) {
     row.addEventListener('click', () => {
-      state.selectedId = Number(row.dataset.entryId)
+      const id = Number(row.dataset.entryId)
+      if (state.expandedIds.has(id)) {
+        state.expandedIds.delete(id)
+      } else {
+        state.expandedIds.add(id)
+      }
       renderTable()
-      renderDetails(state.filteredEntries.find((entry) => entry.id === state.selectedId))
     })
   }
 }
@@ -353,15 +326,16 @@ function applyState(): void {
   const filtered = filterEntries(state.entries, state.filters)
   state.filteredEntries = sortEntries(filtered, state.sortKey, state.sortDirection)
 
-  if (!state.filteredEntries.some((entry) => entry.id === state.selectedId)) {
-    state.selectedId = state.filteredEntries[0]?.id ?? null
+  const visibleIds = new Set(state.filteredEntries.map((entry) => entry.id))
+  for (const id of state.expandedIds) {
+    if (!visibleIds.has(id)) {
+      state.expandedIds.delete(id)
+    }
   }
 
-  const selectedEntry = state.filteredEntries.find((entry) => entry.id === state.selectedId)
   ui.resultsMeta.textContent = `${state.filteredEntries.length} of ${state.entries.length} rows visible`
   renderSummary()
   renderTable()
-  renderDetails(selectedEntry)
 }
 
 async function loadFile(file: File): Promise<void> {
