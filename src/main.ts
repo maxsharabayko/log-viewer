@@ -1,0 +1,446 @@
+import './style.css'
+import { createDefaultFilters, filterEntries, sortEntries } from './filters/logFilters.ts'
+import { parseLogText } from './parser/parseLogFile.ts'
+import { ALL_LEVELS, type EntryKind, type LogEntry, type LogFiltersState, type SortDirection, type SortKey } from './types/log.ts'
+
+type AppState = {
+  entries: LogEntry[]
+  filteredEntries: LogEntry[]
+  filters: LogFiltersState
+  selectedId: number | null
+  selectedName: string
+  sortKey: SortKey
+  sortDirection: SortDirection
+}
+
+const app = document.querySelector<HTMLDivElement>('#app')
+
+if (!app) {
+  throw new Error('Application root not found.')
+}
+
+const initialFilters = createDefaultFilters()
+
+const state: AppState = {
+  entries: [],
+  filteredEntries: [],
+  filters: initialFilters,
+  selectedId: null,
+  selectedName: 'No file loaded',
+  sortKey: 'timestamp',
+  sortDirection: 'asc',
+}
+
+app.innerHTML = `
+  <div class="shell">
+    <header class="hero-panel">
+      <div>
+        <p class="eyebrow">Offline Static Viewer</p>
+        <h1>ngx log viewer</h1>
+        <p class="hero-copy">
+          Upload a local log file, parse your current application format, and keep foreign runtime lines visible instead of dropping them.
+        </p>
+      </div>
+      <div class="format-card">
+        <p class="format-label">Target format</p>
+        <code>YYYY-MM-DD HH:MM:SS.ffffff Level : [AREA] (component) message</code>
+        <p class="format-note">Current logs still work; the parser falls back for GLib and GStreamer output.</p>
+      </div>
+    </header>
+
+    <section class="toolbar">
+      <label class="dropzone" for="log-file">
+        <input id="log-file" type="file" accept=".log,.txt,text/plain" />
+        <span class="dropzone-title">Upload log file</span>
+        <span class="dropzone-subtitle">Drag and drop a local log or browse from disk.</span>
+      </label>
+
+      <div class="toolbar-grid">
+        <label class="field">
+          <span>Search</span>
+          <input id="search-text" type="search" placeholder="Search message, area, component, raw line" />
+        </label>
+
+        <label class="field">
+          <span>Area</span>
+          <select id="area-filter">
+            <option value="all">All areas</option>
+          </select>
+        </label>
+
+        <label class="field">
+          <span>Component</span>
+          <select id="component-filter">
+            <option value="all">All components</option>
+          </select>
+        </label>
+      </div>
+
+      <div class="level-row" id="level-row"></div>
+
+      <div class="kind-row">
+        <label><input id="structured-toggle" type="checkbox" checked /> Structured</label>
+        <label><input id="external-toggle" type="checkbox" checked /> External</label>
+        <label><input id="unstructured-toggle" type="checkbox" checked /> Unstructured</label>
+      </div>
+    </section>
+
+    <section class="summary-grid" id="summary-grid"></section>
+
+    <section class="content-grid">
+      <div class="table-panel">
+        <div class="panel-header">
+          <div>
+            <h2>Parsed events</h2>
+            <p id="results-meta">Load a file to inspect entries.</p>
+          </div>
+          <label class="field inline-field">
+            <span>Sort</span>
+            <select id="sort-select">
+              <option value="timestamp:asc">Timestamp ↑</option>
+              <option value="timestamp:desc">Timestamp ↓</option>
+              <option value="lineNumber:asc">Line ↑</option>
+              <option value="lineNumber:desc">Line ↓</option>
+              <option value="level:desc">Severity ↓</option>
+              <option value="area:asc">Area A-Z</option>
+              <option value="component:asc">Component A-Z</option>
+            </select>
+          </label>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Line</th>
+                <th>Timestamp</th>
+                <th>Level</th>
+                <th>Area</th>
+                <th>Component</th>
+                <th>Message</th>
+                <th>Kind</th>
+              </tr>
+            </thead>
+            <tbody id="results-body"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <aside class="details-panel">
+        <div class="panel-header">
+          <div>
+            <h2>Entry details</h2>
+            <p id="details-meta">Select a row to inspect the parsed fields and raw line.</p>
+          </div>
+        </div>
+        <dl id="details-grid" class="details-grid"></dl>
+        <pre id="raw-line" class="raw-line">No entry selected.</pre>
+      </aside>
+    </section>
+  </div>
+`
+
+const fileInput = document.querySelector<HTMLInputElement>('#log-file')
+const searchInput = document.querySelector<HTMLInputElement>('#search-text')
+const areaSelect = document.querySelector<HTMLSelectElement>('#area-filter')
+const componentSelect = document.querySelector<HTMLSelectElement>('#component-filter')
+const structuredToggle = document.querySelector<HTMLInputElement>('#structured-toggle')
+const externalToggle = document.querySelector<HTMLInputElement>('#external-toggle')
+const unstructuredToggle = document.querySelector<HTMLInputElement>('#unstructured-toggle')
+const sortSelect = document.querySelector<HTMLSelectElement>('#sort-select')
+const levelRow = document.querySelector<HTMLDivElement>('#level-row')
+const summaryGrid = document.querySelector<HTMLDivElement>('#summary-grid')
+const resultsBody = document.querySelector<HTMLTableSectionElement>('#results-body')
+const resultsMeta = document.querySelector<HTMLParagraphElement>('#results-meta')
+const detailsMeta = document.querySelector<HTMLParagraphElement>('#details-meta')
+const detailsGrid = document.querySelector<HTMLDListElement>('#details-grid')
+const rawLine = document.querySelector<HTMLPreElement>('#raw-line')
+const dropzone = document.querySelector<HTMLLabelElement>('.dropzone')
+
+if (
+  !fileInput ||
+  !searchInput ||
+  !areaSelect ||
+  !componentSelect ||
+  !structuredToggle ||
+  !externalToggle ||
+  !unstructuredToggle ||
+  !sortSelect ||
+  !levelRow ||
+  !summaryGrid ||
+  !resultsBody ||
+  !resultsMeta ||
+  !detailsMeta ||
+  !detailsGrid ||
+  !rawLine ||
+  !dropzone
+) {
+  throw new Error('Application UI failed to initialize.')
+}
+
+const ui = {
+  fileInput,
+  searchInput,
+  areaSelect,
+  componentSelect,
+  structuredToggle,
+  externalToggle,
+  unstructuredToggle,
+  sortSelect,
+  levelRow,
+  summaryGrid,
+  resultsBody,
+  resultsMeta,
+  detailsMeta,
+  detailsGrid,
+  rawLine,
+  dropzone,
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;')
+}
+
+function badgeClass(kind: EntryKind): string {
+  if (kind === 'structured') {
+    return 'kind-structured'
+  }
+
+  if (kind === 'external') {
+    return 'kind-external'
+  }
+
+  return 'kind-unstructured'
+}
+
+function updateFilterOptions(): void {
+  const allAreas = Array.from(new Set(state.entries.map((entry) => entry.area).filter((value) => value !== 'General'))).sort((left, right) => left.localeCompare(right))
+  const allComponents = Array.from(new Set(state.entries.map((entry) => entry.component).filter((value) => value !== 'n/a'))).sort((left, right) => left.localeCompare(right))
+
+  ui.areaSelect.innerHTML = ['<option value="all">All areas</option>', ...allAreas.map((area) => `<option value="${escapeHtml(area)}">${escapeHtml(area)}</option>`)].join('')
+  ui.componentSelect.innerHTML = ['<option value="all">All components</option>', ...allComponents.map((component) => `<option value="${escapeHtml(component)}">${escapeHtml(component)}</option>`)].join('')
+
+  ui.areaSelect.value = state.filters.area
+  ui.componentSelect.value = state.filters.component
+}
+
+function renderLevelFilters(): void {
+  ui.levelRow.innerHTML = ALL_LEVELS.map((level) => {
+    const checked = state.filters.levels.has(level) ? 'checked' : ''
+    return `
+      <label class="level-pill level-${level.toLowerCase()}">
+        <input type="checkbox" value="${level}" ${checked} />
+        <span>${level}</span>
+      </label>
+    `
+  }).join('')
+
+  for (const checkbox of ui.levelRow.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')) {
+    checkbox.addEventListener('change', () => {
+      if (checkbox.checked) {
+        state.filters.levels.add(checkbox.value as LogEntry['level'])
+      } else {
+        state.filters.levels.delete(checkbox.value as LogEntry['level'])
+      }
+
+      applyState()
+    })
+  }
+}
+
+function renderSummary(): void {
+  if (state.entries.length === 0) {
+    ui.summaryGrid.innerHTML = `
+      <article class="summary-card">
+        <h3>No data loaded</h3>
+        <p>Upload a log file to see parse coverage, dominant areas, and severity counts.</p>
+      </article>
+    `
+    return
+  }
+
+  const structuredCount = state.entries.filter((entry) => entry.kind === 'structured').length
+  const externalCount = state.entries.filter((entry) => entry.kind === 'external').length
+  const unstructuredCount = state.entries.filter((entry) => entry.kind === 'unstructured').length
+  const topArea = [...state.entries.reduce((map, entry) => map.set(entry.area, (map.get(entry.area) ?? 0) + 1), new Map<string, number>())]
+    .sort((left, right) => right[1] - left[1])[0]
+  const warnCount = state.entries.filter((entry) => entry.level === 'Warn' || entry.level === 'Error' || entry.level === 'Fatal').length
+
+  ui.summaryGrid.innerHTML = `
+    <article class="summary-card">
+      <p class="summary-label">Loaded file</p>
+      <h3>${escapeHtml(state.selectedName)}</h3>
+      <p>${state.entries.length} rows indexed in browser memory.</p>
+    </article>
+    <article class="summary-card">
+      <p class="summary-label">Parse coverage</p>
+      <h3>${structuredCount} structured</h3>
+      <p>${externalCount} external, ${unstructuredCount} unstructured.</p>
+    </article>
+    <article class="summary-card">
+      <p class="summary-label">Noise watch</p>
+      <h3>${warnCount} warn+</h3>
+      <p>${topArea ? `Most active area: ${escapeHtml(topArea[0])}` : 'No dominant area yet.'}</p>
+    </article>
+  `
+}
+
+function renderDetails(entry: LogEntry | undefined): void {
+  if (!entry) {
+    ui.detailsMeta.textContent = 'Select a row to inspect the parsed fields and raw line.'
+    ui.detailsGrid.innerHTML = ''
+    ui.rawLine.textContent = 'No entry selected.'
+    return
+  }
+
+  ui.detailsMeta.textContent = `Line ${entry.lineNumber} • ${entry.kind}`
+  ui.detailsGrid.innerHTML = [
+    ['Timestamp', entry.timestampText ?? 'n/a'],
+    ['Level', entry.level],
+    ['Area', entry.area],
+    ['Component', entry.component],
+    ['Kind', entry.kind],
+    ['Context', entry.context || 'n/a'],
+    ['Message', entry.message],
+  ].map(([term, description]) => `
+      <div>
+        <dt>${escapeHtml(term)}</dt>
+        <dd>${escapeHtml(description)}</dd>
+      </div>
+    `).join('')
+  ui.rawLine.textContent = entry.raw
+}
+
+function renderTable(): void {
+  if (state.filteredEntries.length === 0) {
+    ui.resultsBody.innerHTML = `
+      <tr>
+        <td colspan="7" class="empty-cell">No rows match the current filters.</td>
+      </tr>
+    `
+    return
+  }
+
+  ui.resultsBody.innerHTML = state.filteredEntries.map((entry) => {
+    const messagePreview = entry.message.length > 120 ? `${entry.message.slice(0, 117)}...` : entry.message
+    const selectedClass = entry.id === state.selectedId ? 'selected' : ''
+    return `
+      <tr data-entry-id="${entry.id}" class="${selectedClass}">
+        <td>${entry.lineNumber}</td>
+        <td>${escapeHtml(entry.timestampText ?? 'n/a')}</td>
+        <td><span class="severity severity-${entry.level.toLowerCase()}">${entry.level}</span></td>
+        <td>${escapeHtml(entry.area)}</td>
+        <td>${escapeHtml(entry.component)}</td>
+        <td class="message-cell">${escapeHtml(messagePreview)}</td>
+        <td><span class="kind-badge ${badgeClass(entry.kind)}">${entry.kind}</span></td>
+      </tr>
+    `
+  }).join('')
+
+  for (const row of ui.resultsBody.querySelectorAll<HTMLTableRowElement>('tr[data-entry-id]')) {
+    row.addEventListener('click', () => {
+      state.selectedId = Number(row.dataset.entryId)
+      renderTable()
+      renderDetails(state.filteredEntries.find((entry) => entry.id === state.selectedId))
+    })
+  }
+}
+
+function applyState(): void {
+  const filtered = filterEntries(state.entries, state.filters)
+  state.filteredEntries = sortEntries(filtered, state.sortKey, state.sortDirection)
+
+  if (!state.filteredEntries.some((entry) => entry.id === state.selectedId)) {
+    state.selectedId = state.filteredEntries[0]?.id ?? null
+  }
+
+  const selectedEntry = state.filteredEntries.find((entry) => entry.id === state.selectedId)
+  ui.resultsMeta.textContent = `${state.filteredEntries.length} of ${state.entries.length} rows visible`
+  renderSummary()
+  renderTable()
+  renderDetails(selectedEntry)
+}
+
+async function loadFile(file: File): Promise<void> {
+  state.selectedName = file.name
+  const content = await file.text()
+  state.entries = parseLogText(content)
+  updateFilterOptions()
+  applyState()
+}
+
+ui.fileInput.addEventListener('change', async () => {
+  const file = ui.fileInput.files?.[0]
+
+  if (!file) {
+    return
+  }
+
+  await loadFile(file)
+})
+
+ui.searchInput.addEventListener('input', () => {
+  state.filters.searchText = ui.searchInput.value
+  applyState()
+})
+
+ui.areaSelect.addEventListener('change', () => {
+  state.filters.area = ui.areaSelect.value
+  applyState()
+})
+
+ui.componentSelect.addEventListener('change', () => {
+  state.filters.component = ui.componentSelect.value
+  applyState()
+})
+
+ui.structuredToggle.addEventListener('change', () => {
+  state.filters.includeStructured = ui.structuredToggle.checked
+  applyState()
+})
+
+ui.externalToggle.addEventListener('change', () => {
+  state.filters.includeExternal = ui.externalToggle.checked
+  applyState()
+})
+
+ui.unstructuredToggle.addEventListener('change', () => {
+  state.filters.includeUnstructured = ui.unstructuredToggle.checked
+  applyState()
+})
+
+ui.sortSelect.addEventListener('change', () => {
+  const [key, direction] = ui.sortSelect.value.split(':') as [SortKey, SortDirection]
+  state.sortKey = key
+  state.sortDirection = direction
+  applyState()
+})
+
+ui.dropzone.addEventListener('dragover', (event) => {
+  event.preventDefault()
+  ui.dropzone.classList.add('drag-active')
+})
+
+ui.dropzone.addEventListener('dragleave', () => {
+  ui.dropzone.classList.remove('drag-active')
+})
+
+ui.dropzone.addEventListener('drop', async (event) => {
+  event.preventDefault()
+  ui.dropzone.classList.remove('drag-active')
+  const file = event.dataTransfer?.files?.[0]
+
+  if (!file) {
+    return
+  }
+
+  await loadFile(file)
+})
+
+renderLevelFilters()
+applyState()
