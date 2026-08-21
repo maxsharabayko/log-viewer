@@ -80,7 +80,17 @@ app.innerHTML = `
             </label>
           </div>
 
-          <div class="level-row" id="level-row"></div>
+          <div class="level-toolbar">
+            <span class="field-label">Log levels</span>
+          </div>
+
+          <div class="levels-cluster">
+            <div class="level-row" id="level-row"></div>
+            <div class="level-actions level-actions-inline" aria-label="Log level actions">
+              <button id="reset-levels" class="level-action-btn" type="button">Reset all</button>
+              <button id="select-all-levels" class="level-action-btn" type="button">Select all</button>
+            </div>
+          </div>
 
           <div class="kind-row">
             <label><input id="structured-toggle" type="checkbox" checked /> Structured</label>
@@ -138,6 +148,8 @@ const externalToggle = document.querySelector<HTMLInputElement>('#external-toggl
 const unstructuredToggle = document.querySelector<HTMLInputElement>('#unstructured-toggle')
 const sortSelect = document.querySelector<HTMLSelectElement>('#sort-select')
 const levelRow = document.querySelector<HTMLDivElement>('#level-row')
+const resetLevelsButton = document.querySelector<HTMLButtonElement>('#reset-levels')
+const selectAllLevelsButton = document.querySelector<HTMLButtonElement>('#select-all-levels')
 const summaryGrid = document.querySelector<HTMLDivElement>('#summary-grid')
 const resultsBody = document.querySelector<HTMLTableSectionElement>('#results-body')
 const resultsMeta = document.querySelector<HTMLParagraphElement>('#results-meta')
@@ -153,6 +165,8 @@ if (
   !unstructuredToggle ||
   !sortSelect ||
   !levelRow ||
+  !resetLevelsButton ||
+  !selectAllLevelsButton ||
   !summaryGrid ||
   !resultsBody ||
   !resultsMeta ||
@@ -171,6 +185,8 @@ const ui = {
   unstructuredToggle,
   sortSelect,
   levelRow,
+  resetLevelsButton,
+  selectAllLevelsButton,
   summaryGrid,
   resultsBody,
   resultsMeta,
@@ -390,6 +406,18 @@ ui.sortSelect.addEventListener('change', () => {
   const [key, direction] = ui.sortSelect.value.split(':') as [SortKey, SortDirection]
   state.sortKey = key
   state.sortDirection = direction
+  applyState()
+})
+
+ui.resetLevelsButton.addEventListener('click', () => {
+  state.filters.levels.clear()
+  renderLevelFilters()
+  applyState()
+})
+
+ui.selectAllLevelsButton.addEventListener('click', () => {
+  state.filters.levels = new Set(ALL_LEVELS)
+  renderLevelFilters()
   applyState()
 })
 
