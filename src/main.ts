@@ -8,6 +8,9 @@ type AppState = {
   filteredEntries: LogEntry[]
   filters: LogFiltersState
   expandedIds: Set<number>
+  markedIds: Set<number>
+  activeMarkId: number | null
+  showMarkedOnly: boolean
   selectedName: string
   sortKey: SortKey
   sortDirection: SortDirection
@@ -26,6 +29,9 @@ const state: AppState = {
   filteredEntries: [],
   filters: initialFilters,
   expandedIds: new Set<number>(),
+  markedIds: new Set<number>(),
+  activeMarkId: null,
+  showMarkedOnly: false,
   selectedName: 'No file loaded',
   sortKey: 'timestamp',
   sortDirection: 'asc',
@@ -97,6 +103,15 @@ app.innerHTML = `
             <label><input id="external-toggle" type="checkbox" checked /> External</label>
             <label><input id="unstructured-toggle" type="checkbox" checked /> Unstructured</label>
           </div>
+
+          <div class="mark-toolbar">
+            <label><input id="marked-only-toggle" type="checkbox" /> Marked only</label>
+            <span id="mark-count" class="mark-count">0 marked</span>
+            <div class="mark-nav">
+              <button id="mark-prev" class="level-action-btn" type="button" title="Previous marked line">↑ Prev</button>
+              <button id="mark-next" class="level-action-btn" type="button" title="Next marked line">↓ Next</button>
+            </div>
+          </div>
         </div>
 
         <div class="panel-header">
@@ -122,6 +137,7 @@ app.innerHTML = `
           <table>
             <thead>
               <tr>
+                <th class="mark-col"></th>
                 <th>Line</th>
                 <th>Timestamp</th>
                 <th>Level</th>
@@ -150,6 +166,10 @@ const sortSelect = document.querySelector<HTMLSelectElement>('#sort-select')
 const levelRow = document.querySelector<HTMLDivElement>('#level-row')
 const resetLevelsButton = document.querySelector<HTMLButtonElement>('#reset-levels')
 const selectAllLevelsButton = document.querySelector<HTMLButtonElement>('#select-all-levels')
+const markedOnlyToggle = document.querySelector<HTMLInputElement>('#marked-only-toggle')
+const markCountLabel = document.querySelector<HTMLSpanElement>('#mark-count')
+const markPrevButton = document.querySelector<HTMLButtonElement>('#mark-prev')
+const markNextButton = document.querySelector<HTMLButtonElement>('#mark-next')
 const summaryGrid = document.querySelector<HTMLDivElement>('#summary-grid')
 const resultsBody = document.querySelector<HTMLTableSectionElement>('#results-body')
 const resultsMeta = document.querySelector<HTMLParagraphElement>('#results-meta')
@@ -167,6 +187,10 @@ if (
   !levelRow ||
   !resetLevelsButton ||
   !selectAllLevelsButton ||
+  !markedOnlyToggle ||
+  !markCountLabel ||
+  !markPrevButton ||
+  !markNextButton ||
   !summaryGrid ||
   !resultsBody ||
   !resultsMeta ||
@@ -187,6 +211,10 @@ const ui = {
   levelRow,
   resetLevelsButton,
   selectAllLevelsButton,
+  markedOnlyToggle,
+  markCountLabel,
+  markPrevButton,
+  markNextButton,
   summaryGrid,
   resultsBody,
   resultsMeta,
@@ -286,24 +314,34 @@ function renderSummary(): void {
   `
 }
 
+function getMarkableEntries(): LogEntry[] {
+  return state.showMarkedOnly ? state.filteredEntries.filter((entry) => state.markedIds.has(entry.id)) : state.filteredEntries
+}
+
 function renderTable(): void {
-  if (state.filteredEntries.length === 0) {
+  const rows = getMarkableEntries()
+
+  if (rows.length === 0) {
     ui.resultsBody.innerHTML = `
       <tr>
-        <td colspan="7" class="empty-cell">No rows match the current filters.</td>
+        <td colspan="8" class="empty-cell">No rows match the current filters.</td>
       </tr>
     `
     return
   }
 
-  ui.resultsBody.innerHTML = state.filteredEntries.map((entry) => {
+  ui.resultsBody.innerHTML = rows.map((entry) => {
     const isExpanded = state.expandedIds.has(entry.id)
+    const isMarked = state.markedIds.has(entry.id)
     const messagePreview = entry.message.length > 120 ? `${entry.message.slice(0, 117)}...` : entry.message
     const displayedMessage = isExpanded ? entry.message : messagePreview
-    const expandedClass = isExpanded ? 'expanded' : ''
+    const rowClasses = [isExpanded ? 'expanded' : '', isMarked ? 'marked' : '', entry.id === state.activeMarkId ? 'mark-focus' : ''].filter(Boolean).join(' ')
 
     return `
-      <tr data-entry-id="${entry.id}" class="${expandedClass}">
+      <tr data-entry-id="${entry.id}" class="${rowClasses}">
+        <td class="mark-cell">
+          <button type="button" class="mark-btn ${isMarked ? 'marked' : ''}" data-mark-id="${entry.id}" title="${isMarked ? 'Unmark line' : 'Mark line'}">${isMarked ? '★' : '☆'}</button>
+        </td>
         <td>${entry.lineNumber}</td>
         <td>${escapeHtml(entry.timestampText ?? 'n/a')}</td>
         <td><span class="severity severity-${entry.level.toLowerCase()}">${entry.level}</span></td>
@@ -314,7 +352,7 @@ function renderTable(): void {
       </tr>
       ${isExpanded ? `
       <tr class="expand-row" data-parent-entry-id="${entry.id}">
-        <td colspan="7">
+        <td colspan="8">
           <div class="expand-grid">
             <p><strong>Context:</strong> ${escapeHtml(entry.context || 'n/a')}</p>
             <p><strong>Raw:</strong> ${escapeHtml(entry.raw)}</p>
@@ -324,6 +362,14 @@ function renderTable(): void {
       ` : ''}
     `
   }).join('')
+
+  for (const button of ui.resultsBody.querySelectorAll<HTMLButtonElement>('.mark-btn')) {
+    button.addEventListener('click', (event) => {
+      event.stopPropagation()
+      const id = Number(button.dataset.markId)
+      toggleMark(id)
+    })
+  }
 
   for (const row of ui.resultsBody.querySelectorAll<HTMLTableRowElement>('tr[data-entry-id]')) {
     row.addEventListener('click', () => {
@@ -338,6 +384,39 @@ function renderTable(): void {
   }
 }
 
+function toggleMark(id: number): void {
+  if (state.markedIds.has(id)) {
+    state.markedIds.delete(id)
+  } else {
+    state.markedIds.add(id)
+  }
+  renderMarkCount()
+  renderTable()
+}
+
+function renderMarkCount(): void {
+  ui.markCountLabel.textContent = `${state.markedIds.size} marked`
+}
+
+function navigateMark(direction: 1 | -1): void {
+  const marked = state.filteredEntries.filter((entry) => state.markedIds.has(entry.id))
+
+  if (marked.length === 0) {
+    return
+  }
+
+  const currentIndex = marked.findIndex((entry) => entry.id === state.activeMarkId)
+  const nextIndex = currentIndex === -1
+    ? (direction === 1 ? 0 : marked.length - 1)
+    : (currentIndex + direction + marked.length) % marked.length
+
+  state.activeMarkId = marked[nextIndex].id
+  renderTable()
+
+  const targetRow = ui.resultsBody.querySelector<HTMLTableRowElement>(`tr[data-entry-id="${state.activeMarkId}"]`)
+  targetRow?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+}
+
 function applyState(): void {
   const filtered = filterEntries(state.entries, state.filters)
   state.filteredEntries = sortEntries(filtered, state.sortKey, state.sortDirection)
@@ -349,8 +428,19 @@ function applyState(): void {
     }
   }
 
+  for (const id of Array.from(state.markedIds)) {
+    if (!state.entries.some((entry) => entry.id === id)) {
+      state.markedIds.delete(id)
+    }
+  }
+
+  if (state.activeMarkId !== null && !state.markedIds.has(state.activeMarkId)) {
+    state.activeMarkId = null
+  }
+
   ui.resultsMeta.textContent = `${state.filteredEntries.length} of ${state.entries.length} rows visible`
   renderSummary()
+  renderMarkCount()
   renderTable()
 }
 
@@ -419,6 +509,19 @@ ui.selectAllLevelsButton.addEventListener('click', () => {
   state.filters.levels = new Set(ALL_LEVELS)
   renderLevelFilters()
   applyState()
+})
+
+ui.markedOnlyToggle.addEventListener('change', () => {
+  state.showMarkedOnly = ui.markedOnlyToggle.checked
+  renderTable()
+})
+
+ui.markPrevButton.addEventListener('click', () => {
+  navigateMark(-1)
+})
+
+ui.markNextButton.addEventListener('click', () => {
+  navigateMark(1)
 })
 
 ui.dropzone.addEventListener('dragover', (event) => {

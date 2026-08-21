@@ -245,6 +245,27 @@ tbody,
   margin-top: 10px;
 }
 
+.mark-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+  font-size: 0.8rem;
+}
+
+.mark-count {
+  color: var(--text-soft);
+}
+
+.mark-nav {
+  display: inline-flex;
+  gap: 6px;
+  margin-left: auto;
+}
+
 .level-toolbar {
   display: block;
   margin-top: 10px;
@@ -399,29 +420,57 @@ td {
   line-height: 1.2;
 }
 
-th:nth-child(1),
-td:nth-child(1),
-th:nth-child(3),
-td:nth-child(3),
+th:nth-child(2),
+td:nth-child(2),
 th:nth-child(4),
 td:nth-child(4),
 th:nth-child(5),
 td:nth-child(5),
+th:nth-child(6),
+td:nth-child(6),
+th:nth-child(8),
+td:nth-child(8) {
+  width: 1%;
+  white-space: nowrap;
+}
+
+th:nth-child(1),
+td:nth-child(1),
+th:nth-child(3),
+td:nth-child(3) {
+  width: 1%;
+  white-space: nowrap;
+}
+
 th:nth-child(7),
 td:nth-child(7) {
-  width: 1%;
-  white-space: nowrap;
-}
-
-th:nth-child(2),
-td:nth-child(2) {
-  width: 1%;
-  white-space: nowrap;
-}
-
-th:nth-child(6),
-td:nth-child(6) {
   width: auto;
+}
+
+.mark-cell,
+.mark-col {
+  width: 1%;
+  padding-left: 6px;
+  padding-right: 4px;
+  text-align: center;
+}
+
+.mark-btn {
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: 0.95rem;
+  line-height: 1;
+  padding: 2px 4px;
+  color: var(--muted);
+}
+
+.mark-btn:hover {
+  color: var(--warn);
+}
+
+.mark-btn.marked {
+  color: var(--warn);
 }
 
 tbody tr {
@@ -431,6 +480,15 @@ tbody tr {
 tbody tr:hover,
 tbody tr.expanded {
   background: rgba(231, 111, 81, 0.12);
+}
+
+tbody tr.marked {
+  background: rgba(242, 193, 78, 0.08);
+}
+
+tbody tr.mark-focus {
+  outline: 2px solid var(--warn);
+  outline-offset: -2px;
 }
 
 .message-cell {
