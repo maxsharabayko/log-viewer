@@ -367,7 +367,7 @@ table {
   width: 100%;
   border-collapse: collapse;
   min-width: 760px;
-  table-layout: fixed;
+  table-layout: auto;
 }
 
 thead {
@@ -399,11 +399,30 @@ td {
   line-height: 1.2;
 }
 
-td:nth-child(1) { width: 42px; }
-td:nth-child(3) { width: 76px; }
-td:nth-child(4) { width: 120px; }
-td:nth-child(5) { width: 150px; }
-td:nth-child(7) { width: 94px; }
+th:nth-child(1),
+td:nth-child(1),
+th:nth-child(3),
+td:nth-child(3),
+th:nth-child(4),
+td:nth-child(4),
+th:nth-child(5),
+td:nth-child(5),
+th:nth-child(7),
+td:nth-child(7) {
+  width: 1%;
+  white-space: nowrap;
+}
+
+th:nth-child(2),
+td:nth-child(2) {
+  width: 1%;
+  white-space: nowrap;
+}
+
+th:nth-child(6),
+td:nth-child(6) {
+  width: auto;
+}
 
 tbody tr {
   cursor: pointer;
@@ -415,7 +434,8 @@ tbody tr.expanded {
 }
 
 .message-cell {
-  min-width: 240px;
+  min-width: 480px;
+  width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
 }
