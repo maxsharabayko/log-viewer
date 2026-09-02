@@ -53,11 +53,26 @@ app.innerHTML = `
     </header>
 
     <section class="upload-panel">
-      <label class="dropzone" for="log-file">
-        <input id="log-file" type="file" accept=".log,.txt,text/plain" />
-        <span class="dropzone-title">Upload log file</span>
-        <span class="dropzone-subtitle">Drag and drop a local log or browse from disk.</span>
-      </label>
+      <div class="upload-mode-toggle" role="tablist" aria-label="Log input mode">
+        <button id="mode-file-btn" class="mode-toggle-btn active" type="button">Upload file</button>
+        <button id="mode-paste-btn" class="mode-toggle-btn" type="button">Paste text</button>
+      </div>
+
+      <div id="upload-file-mode">
+        <label class="dropzone" for="log-file">
+          <input id="log-file" type="file" accept=".log,.txt,text/plain" />
+          <span class="dropzone-title">Upload log file</span>
+          <span class="dropzone-subtitle">Drag and drop a local log or browse from disk.</span>
+        </label>
+      </div>
+
+      <div id="upload-paste-mode" hidden>
+        <textarea id="paste-input" class="paste-textarea" rows="3" placeholder="Paste log file contents here..."></textarea>
+        <div class="paste-actions">
+          <button id="paste-load-btn" class="level-action-btn" type="button">Load pasted text</button>
+          <button id="paste-clear-btn" class="level-action-btn" type="button">Clear</button>
+        </div>
+      </div>
     </section>
 
     <section class="summary-grid" id="summary-grid"></section>
@@ -174,6 +189,13 @@ const summaryGrid = document.querySelector<HTMLDivElement>('#summary-grid')
 const resultsBody = document.querySelector<HTMLTableSectionElement>('#results-body')
 const resultsMeta = document.querySelector<HTMLParagraphElement>('#results-meta')
 const dropzone = document.querySelector<HTMLLabelElement>('.dropzone')
+const modeFileBtn = document.querySelector<HTMLButtonElement>('#mode-file-btn')
+const modePasteBtn = document.querySelector<HTMLButtonElement>('#mode-paste-btn')
+const uploadFileMode = document.querySelector<HTMLDivElement>('#upload-file-mode')
+const uploadPasteMode = document.querySelector<HTMLDivElement>('#upload-paste-mode')
+const pasteInput = document.querySelector<HTMLTextAreaElement>('#paste-input')
+const pasteLoadBtn = document.querySelector<HTMLButtonElement>('#paste-load-btn')
+const pasteClearBtn = document.querySelector<HTMLButtonElement>('#paste-clear-btn')
 
 if (
   !fileInput ||
@@ -194,7 +216,14 @@ if (
   !summaryGrid ||
   !resultsBody ||
   !resultsMeta ||
-  !dropzone
+  !dropzone ||
+  !modeFileBtn ||
+  !modePasteBtn ||
+  !uploadFileMode ||
+  !uploadPasteMode ||
+  !pasteInput ||
+  !pasteLoadBtn ||
+  !pasteClearBtn
 ) {
   throw new Error('Application UI failed to initialize.')
 }
@@ -219,6 +248,13 @@ const ui = {
   resultsBody,
   resultsMeta,
   dropzone,
+  modeFileBtn,
+  modePasteBtn,
+  uploadFileMode,
+  uploadPasteMode,
+  pasteInput,
+  pasteLoadBtn,
+  pasteClearBtn,
 }
 
 function escapeHtml(value: string): string {
@@ -444,12 +480,34 @@ function applyState(): void {
   renderTable()
 }
 
-async function loadFile(file: File): Promise<void> {
-  state.selectedName = file.name
-  const content = await file.text()
+function applyParsedContent(name: string, content: string): void {
+  state.selectedName = name
   state.entries = parseLogText(content)
   updateFilterOptions()
   applyState()
+}
+
+async function loadFile(file: File): Promise<void> {
+  const content = await file.text()
+  applyParsedContent(file.name, content)
+}
+
+function loadPastedText(): void {
+  const text = ui.pasteInput.value
+
+  if (!text.trim()) {
+    return
+  }
+
+  applyParsedContent(`Pasted log (${new Date().toLocaleString()})`, text)
+}
+
+function setUploadMode(mode: 'file' | 'paste'): void {
+  const isFileMode = mode === 'file'
+  ui.uploadFileMode.hidden = !isFileMode
+  ui.uploadPasteMode.hidden = isFileMode
+  ui.modeFileBtn.classList.toggle('active', isFileMode)
+  ui.modePasteBtn.classList.toggle('active', !isFileMode)
 }
 
 ui.fileInput.addEventListener('change', async () => {
@@ -543,6 +601,22 @@ ui.dropzone.addEventListener('drop', async (event) => {
   }
 
   await loadFile(file)
+})
+
+ui.modeFileBtn.addEventListener('click', () => {
+  setUploadMode('file')
+})
+
+ui.modePasteBtn.addEventListener('click', () => {
+  setUploadMode('paste')
+})
+
+ui.pasteLoadBtn.addEventListener('click', () => {
+  loadPastedText()
+})
+
+ui.pasteClearBtn.addEventListener('click', () => {
+  ui.pasteInput.value = ''
 })
 
 renderLevelFilters()
