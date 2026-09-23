@@ -32,6 +32,10 @@ Build the static site:
 npm run build
 ```
 
+## Deployment
+
+The GitHub Pages workflow deploys every push to `main` and can also be run manually from the Actions tab. Enable **GitHub Actions** as the repository's Pages source in **Settings > Pages**. The deployed site is served from `https://maxsharabayko.github.io/log-viewer/`.
+
 ## Parsing Rules
 
 The parser handles three kinds of rows:
