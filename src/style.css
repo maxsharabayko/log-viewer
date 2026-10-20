@@ -423,6 +423,39 @@ tbody,
   max-height: calc(100vh - 270px);
 }
 
+.pagination {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 6px;
+  font-size: 0.78rem;
+  color: var(--text-soft);
+}
+
+.pagination input {
+  width: 80px;
+  padding: 2px 4px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--panel-soft);
+  color: var(--text);
+}
+
+.level-action-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+#load-status {
+  margin-top: 6px;
+  font-size: 0.8rem;
+}
+
+.load-error {
+  color: #ff9ab0;
+}
+
 table {
   width: 100%;
   border-collapse: collapse;

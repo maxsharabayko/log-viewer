@@ -1,6 +1,7 @@
 import './style.css'
 import { createDefaultFilters, filterEntries, sortEntries } from './filters/logFilters.ts'
-import { parseLogText } from './parser/parseLogFile.ts'
+import { parseLogFile, parseLogText } from './parser/parseLogFile.ts'
+import { getPage, PAGE_SIZE } from './tablePagination.ts'
 import { ALL_LEVELS, type EntryKind, type LogEntry, type LogFiltersState, type SortDirection, type SortKey } from './types/log.ts'
 
 type AppState = {
@@ -14,6 +15,7 @@ type AppState = {
   selectedName: string
   sortKey: SortKey
   sortDirection: SortDirection
+  page: number
 }
 
 const app = document.querySelector<HTMLDivElement>('#app')
@@ -35,6 +37,7 @@ const state: AppState = {
   selectedName: 'No file loaded',
   sortKey: 'timestamp',
   sortDirection: 'asc',
+  page: 0,
 }
 
 app.innerHTML = `
@@ -72,6 +75,7 @@ app.innerHTML = `
           <button id="paste-load-btn" class="level-action-btn" type="button">Load pasted text</button>
           <button id="paste-clear-btn" class="level-action-btn" type="button">Clear</button>
         </div>
+        <p id="load-status" role="status" hidden></p>
       </div>
     </section>
 
@@ -148,6 +152,12 @@ app.innerHTML = `
           </label>
         </div>
 
+        <div class="pagination" aria-label="Event pages">
+          <button id="page-prev" class="level-action-btn" type="button">Previous</button>
+          <label>Page <input id="page-number" type="number" min="1" value="1" aria-label="Page number" /></label>
+          <span id="page-meta"></span>
+          <button id="page-next" class="level-action-btn" type="button">Next</button>
+        </div>
         <div class="table-wrap">
           <table>
             <thead>
@@ -196,6 +206,11 @@ const uploadPasteMode = document.querySelector<HTMLDivElement>('#upload-paste-mo
 const pasteInput = document.querySelector<HTMLTextAreaElement>('#paste-input')
 const pasteLoadBtn = document.querySelector<HTMLButtonElement>('#paste-load-btn')
 const pasteClearBtn = document.querySelector<HTMLButtonElement>('#paste-clear-btn')
+const loadStatus = document.querySelector<HTMLParagraphElement>('#load-status')
+const pagePrev = document.querySelector<HTMLButtonElement>('#page-prev')
+const pageNext = document.querySelector<HTMLButtonElement>('#page-next')
+const pageNumber = document.querySelector<HTMLInputElement>('#page-number')
+const pageMeta = document.querySelector<HTMLSpanElement>('#page-meta')
 
 if (
   !fileInput ||
@@ -223,7 +238,12 @@ if (
   !uploadPasteMode ||
   !pasteInput ||
   !pasteLoadBtn ||
-  !pasteClearBtn
+  !pasteClearBtn ||
+  !loadStatus ||
+  !pagePrev ||
+  !pageNext ||
+  !pageNumber ||
+  !pageMeta
 ) {
   throw new Error('Application UI failed to initialize.')
 }
@@ -255,6 +275,11 @@ const ui = {
   pasteInput,
   pasteLoadBtn,
   pasteClearBtn,
+  loadStatus,
+  pagePrev,
+  pageNext,
+  pageNumber,
+  pageMeta,
 }
 
 function escapeHtml(value: string): string {
@@ -356,6 +381,13 @@ function getMarkableEntries(): LogEntry[] {
 
 function renderTable(): void {
   const rows = getMarkableEntries()
+  const { page, pageCount, start, end } = getPage(rows.length, state.page)
+  state.page = page
+  ui.pageNumber.value = String(page + 1)
+  ui.pageNumber.max = String(pageCount)
+  ui.pagePrev.disabled = page === 0
+  ui.pageNext.disabled = page === pageCount - 1
+  ui.pageMeta.textContent = `of ${pageCount} · ${rows.length === 0 ? 0 : start + 1}–${end} of ${rows.length} rows`
 
   if (rows.length === 0) {
     ui.resultsBody.innerHTML = `
@@ -366,7 +398,7 @@ function renderTable(): void {
     return
   }
 
-  ui.resultsBody.innerHTML = rows.map((entry) => {
+  ui.resultsBody.innerHTML = rows.slice(start, end).map((entry) => {
     const isExpanded = state.expandedIds.has(entry.id)
     const isMarked = state.markedIds.has(entry.id)
     const messagePreview = entry.message.length > 120 ? `${entry.message.slice(0, 117)}...` : entry.message
@@ -447,6 +479,8 @@ function navigateMark(direction: 1 | -1): void {
     : (currentIndex + direction + marked.length) % marked.length
 
   state.activeMarkId = marked[nextIndex].id
+  const targetIndex = getMarkableEntries().findIndex((entry) => entry.id === state.activeMarkId)
+  state.page = Math.floor(targetIndex / PAGE_SIZE)
   renderTable()
 
   const targetRow = ui.resultsBody.querySelector<HTMLTableRowElement>(`tr[data-entry-id="${state.activeMarkId}"]`)
@@ -454,6 +488,7 @@ function navigateMark(direction: 1 | -1): void {
 }
 
 function applyState(): void {
+  state.page = 0
   const filtered = filterEntries(state.entries, state.filters)
   state.filteredEntries = sortEntries(filtered, state.sortKey, state.sortDirection)
 
@@ -480,16 +515,37 @@ function applyState(): void {
   renderTable()
 }
 
-function applyParsedContent(name: string, content: string): void {
+function applyParsedEntries(name: string, entries: LogEntry[]): void {
   state.selectedName = name
-  state.entries = parseLogText(content)
+  state.entries = entries
+  state.expandedIds.clear()
+  state.markedIds.clear()
+  state.activeMarkId = null
   updateFilterOptions()
   applyState()
 }
 
+let loadRequest = 0
+
+function showLoadStatus(message: string, isError = false): void {
+  ui.loadStatus.textContent = message
+  ui.loadStatus.hidden = message === ''
+  ui.loadStatus.classList.toggle('load-error', isError)
+}
+
 async function loadFile(file: File): Promise<void> {
-  const content = await file.text()
-  applyParsedContent(file.name, content)
+  const request = ++loadRequest
+  showLoadStatus(`Loading ${file.name}...`)
+  try {
+    const entries = await parseLogFile(file)
+    if (request !== loadRequest) return
+    applyParsedEntries(file.name, entries)
+    showLoadStatus('')
+  } catch (error) {
+    if (request !== loadRequest) return
+    console.error('Unable to load log file.', error)
+    showLoadStatus(`Unable to load ${file.name}: ${error instanceof Error ? error.message : String(error)}`, true)
+  }
 }
 
 function loadPastedText(): void {
@@ -499,8 +555,28 @@ function loadPastedText(): void {
     return
   }
 
-  applyParsedContent(`Pasted log (${new Date().toLocaleString()})`, text)
+  ++loadRequest
+  try {
+    applyParsedEntries(`Pasted log (${new Date().toLocaleString()})`, parseLogText(text))
+    showLoadStatus('')
+  } catch (error) {
+    console.error('Unable to load pasted log.', error)
+    showLoadStatus(`Unable to load pasted log: ${error instanceof Error ? error.message : String(error)}`, true)
+  }
 }
+
+function changePage(page: number): void {
+  state.page = page
+  renderTable()
+  ui.resultsBody.closest('.table-wrap')?.scrollTo({ top: 0 })
+}
+
+ui.pagePrev.addEventListener('click', () => changePage(state.page - 1))
+ui.pageNext.addEventListener('click', () => changePage(state.page + 1))
+ui.pageNumber.addEventListener('change', () => {
+  const page = Number(ui.pageNumber.value)
+  changePage(Number.isInteger(page) ? page - 1 : 0)
+})
 
 function setUploadMode(mode: 'file' | 'paste'): void {
   const isFileMode = mode === 'file'
@@ -571,6 +647,7 @@ ui.selectAllLevelsButton.addEventListener('click', () => {
 
 ui.markedOnlyToggle.addEventListener('change', () => {
   state.showMarkedOnly = ui.markedOnlyToggle.checked
+  state.page = 0
   renderTable()
 })
 
