@@ -8,7 +8,7 @@ Static client-side log viewer for proprietary application logs. The app runs ent
 - Parse the current primary format: `YYYY-MM-DD HH:MM:SS.ffffff Level : message`.
 - Extract timestamp, severity, area, component, message, and raw line.
 - Preserve external or fallback lines such as GLib or GStreamer runtime output.
-- Filter by free-text search, severity, area, component, and parsed kind.
+- Filter by free-text search, severity, area, component, and parsed kind. Press Enter to apply search text; clearing the search applies immediately. Typing does not scan the log on every keystroke.
 - Browse 500 rows per page, with direct page selection. Filtering and sorting cover the entire log, and marked-line navigation switches pages automatically.
 - Read uploaded files incrementally and render only the current page, avoiding oversized HTML strings for large logs. Parsed entries still reside in browser memory, so available memory limits the maximum file size.
 - Inspect the selected row in a detail panel.

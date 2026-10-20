@@ -86,7 +86,7 @@ app.innerHTML = `
         <div class="table-filters">
           <div class="toolbar-grid">
             <label class="field">
-              <span>Search</span>
+              <span>Search (press Enter)</span>
               <input id="search-text" type="search" placeholder="Search message, area, component, raw line" />
             </label>
 
@@ -596,9 +596,21 @@ ui.fileInput.addEventListener('change', async () => {
   await loadFile(file)
 })
 
-ui.searchInput.addEventListener('input', () => {
+function applySearch(): void {
+  if (state.filters.searchText === ui.searchInput.value) return
   state.filters.searchText = ui.searchInput.value
   applyState()
+}
+
+ui.searchInput.addEventListener('keydown', (event) => {
+  if (event.key === 'Enter' && !event.isComposing) {
+    event.preventDefault()
+    applySearch()
+  }
+})
+
+ui.searchInput.addEventListener('input', () => {
+  if (ui.searchInput.value === '') applySearch()
 })
 
 ui.areaSelect.addEventListener('change', () => {
