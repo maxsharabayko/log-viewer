@@ -24,7 +24,8 @@ function toTimestampSort(dateText: string, timeText: string): number {
 }
 
 function splitContext(context: string): { area: string; component: string } {
-  const segments = context.split('::').map((segment) => segment.trim()).filter(Boolean)
+  const delimiter = context.includes('::') ? '::' : ':'
+  const segments = context.split(delimiter).map((segment) => segment.trim()).filter(Boolean)
 
   if (segments.length === 0) {
     return { area: 'General', component: 'n/a' }
@@ -36,7 +37,7 @@ function splitContext(context: string): { area: string; component: string } {
 
   return {
     area: segments[0],
-    component: segments.slice(1).join('::'),
+    component: segments.slice(1).join(delimiter),
   }
 }
 
@@ -53,6 +54,10 @@ function extractMessageParts(message: string): { area: string; component: string
     const split = splitContext(leadingBracket[1].trim())
     area = split.area
     component = split.component
+
+    if (leadingBracket[1].includes(':') && !leadingBracket[1].includes('::')) {
+      return { area, component, context: contexts[0], message: rest }
+    }
   }
 
   const prefixed = prefixPattern.exec(rest)

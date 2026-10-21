@@ -5,7 +5,7 @@ Static client-side log viewer for proprietary application logs. The app runs ent
 ## Current Features
 
 - Upload or drag and drop a `.log` or `.txt` file.
-- Parse the current primary format: `YYYY-MM-DD HH:MM:SS.ffffff Level : message`.
+- Parse the primary format: `YYYY-MM-DD HH:MM:SS.ffffff Level : [area:component:subcomponent] message`.
 - Extract timestamp, severity, area, component, message, and raw line.
 - Preserve external or fallback lines such as GLib or GStreamer runtime output.
 - Filter by free-text search, severity, area, component, and parsed kind. Press Enter to apply search text; clearing the search applies immediately. Typing does not scan the log on every keystroke.
@@ -54,28 +54,29 @@ The parser handles three kinds of rows:
 
 Area and component extraction follow these rules:
 
+- `[area:component:subcomponent] ...` becomes area `area`, component `component:subcomponent`. Any number of nested modules is supported; the remaining text is preserved as the message without further prefix extraction.
 - `[ngx-decoder::sink] ...` becomes area `ngx-decoder`, component `sink`.
 - `IPC: Getting decoder...` becomes area `IPC`.
 - `IPC: [Configure Decoder] decoder ID 1.` becomes area `IPC`, component `Configure Decoder`.
 
-## Recommended Logging Format
+## Canonical Logging Format
 
-For future consistency, prefer a delimiter-based format instead of relying on visual alignment:
+The final format puts the area and module hierarchy together in square brackets:
 
 ```text
-YYYY-MM-DD HH:MM:SS.ffffff Level : [AREA] (component) message
+YYYY-MM-DD HH:MM:SS.ffffff Level : [area:component:subcomponent] message
 ```
 
 Example:
 
 ```text
-2026-03-11 09:04:25.782170 Info  : [PIPELINE_1] (haisrtsrc) SRTSocket::Connect() - Link : srt://10.129.10.35:4201
+2026-09-02 16:18:42.478127 Trace : [area:component:subcomponent] Processing request...
 ```
 
-Recommended field meanings:
+Field meanings:
 
-- `AREA`: subsystem or ownership boundary such as `PIPELINE_1`, `IPC`, or `DECODER`.
-- `component`: concrete module, class, element, or instance such as `haisrtsrc` or `ngx-decoder::sink`.
+- `area`: subsystem or ownership boundary such as `PIPELINE_1`, `IPC`, or `DECODER`.
+- `component`, `subcomponent`, and further colon-separated segments: module hierarchy, displayed and filtered together in the Component column.
 - `message`: free-text event description.
 
 Recommended severity vocabulary:

@@ -13,13 +13,13 @@ Implementation priorities:
 - Keep parsing fully local in the browser; do not introduce network dependencies for log content.
 
 Parsing expectations:
-- Support the current log format: `YYYY-MM-DD HH:MM:SS.ffffff Level : message`.
+- Support the canonical log format: `YYYY-MM-DD HH:MM:SS.ffffff Level : [area:component:subcomponent] message`.
 - Extract and display timestamp, severity, area, component, message, and raw line where possible.
 - Preserve foreign or malformed lines as visible fallback rows instead of dropping them.
 
 Logging consistency guidance:
-- Prefer a delimiter-based canonical format: `YYYY-MM-DD HH:MM:SS.ffffff Level : [AREA] (component) message`.
-- Use `AREA` for subsystem ownership and `component` for the concrete module, class, or pipeline element.
+- Use square brackets containing a colon-separated hierarchy: `[area:component:subcomponent:...]`.
+- The first segment is the subsystem area; all remaining segments form the module hierarchy, with arbitrary depth.
 - Standardize severity vocabulary to `Trace`, `Debug`, `Info`, `Warn`, `Error`, `Fatal`.
 
 Change guidelines:

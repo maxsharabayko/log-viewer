@@ -50,8 +50,8 @@ app.innerHTML = `
       </div>
       <div class="format-card">
         <p class="format-label">Target format</p>
-        <code>YYYY-MM-DD HH:MM:SS.ffffff Level : [AREA] (component) message</code>
-        <p class="format-note">Current logs still work; fallback rows preserve GLib and GStreamer output.</p>
+        <code>YYYY-MM-DD HH:MM:SS.ffffff Level : [area:component:subcomponent] message</code>
+        <p class="format-note">Area first, then any depth of modules separated by colons. Legacy and foreign lines remain visible.</p>
       </div>
     </header>
 
