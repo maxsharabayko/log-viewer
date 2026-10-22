@@ -492,6 +492,11 @@ td {
   line-height: 1.2;
 }
 
+tbody td {
+  padding-top: 3px;
+  padding-bottom: 3px;
+}
+
 th:nth-child(2),
 td:nth-child(2),
 th:nth-child(4),
